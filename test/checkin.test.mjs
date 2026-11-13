@@ -1,13 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readCheckin, beijingDay, CAMPAIGN_SCENE, SIGNIN_TASK, campaignGroup, checkin, _internal } from '../lib/checkin.mjs'
+import { readCheckin, CAMPAIGN_SCENE, SIGNIN_TASK, campaignGroup, checkin, _internal } from '../lib/checkin.mjs'
 import { parseCookieHeader, cookiesFromHeader, clientInfoFromCookies } from '../lib/cookie-import.mjs'
-import { mkdtemp } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-
-// 签到账本放临时目录，探测循环别写真实数据
-process.env.DOUBAO_WORK_LEDGER = await mkdtemp(join(tmpdir(), 'doubao-checkin-edge-'))
 
 /** 造一份和 v3/detail 同形的详情 */
 function detail(tasks) {
@@ -31,39 +25,22 @@ const signin = (overrides = {}) => ({
   },
 })
 
-test('从 launch 读账号实际投放的活动组', () => {
-  assert.equal(_internal.campaignGroup({ ug_campaign_info: { campaign_group_code: 'pc_incentive_task_mvp_v3' } }), 'pc_incentive_task_mvp_v3')
-  // 没投放的账号返回空字符串
-  assert.equal(_internal.campaignGroup({ ug_campaign_info: { campaign_group_code: '' } }), '')
-  assert.equal(_internal.campaignGroup({}), '')
-  assert.equal(_internal.campaignGroup(undefined), '')
-})
-
-test('campaign not found 判定为未投放，不是故障', async () => {
-  const err = new Error('campaign not found')
-  const session = {
-    ready: async () => {},
-    uid: 'u1', profile: 'p',
-    launch: { ug_campaign_info: { campaign_group_code: 'g1' } },
-    json: async (path) => {
-      if (path.includes('/detail/')) throw err
-      return {}
-    },
-    request: async () => { throw new Error('不该发写请求') },
-  }
-  const result = await checkin(session)
-  assert.equal(result.outcome, 'inactive')
-  assert.match(result.message, /没有投放签到活动/)
-})
-
 test('签到活动组与任务名是实测值', () => {
   assert.equal(CAMPAIGN_SCENE, 'pc_incentive_task_mvp_v3')
   assert.equal(SIGNIN_TASK, 'daily_signin')
 })
 
-test('领取接口是 item/reward/claim，不是 landing/checkin', () => {
-  assert.equal(_internal.CLAIM_PATH, '/alice/ug/campaign/item/reward/claim/')
+test('只读钩子不再导出领取接口', () => {
   assert.equal(_internal.DETAIL_PATH, '/alice/ug/campaign/v3/detail/')
+  assert.equal('CLAIM_PATH' in _internal, false, '只读实现不该有领取接口常量')
+})
+
+test('从 launch 读账号实际投放的活动组', () => {
+  assert.equal(campaignGroup({ ug_campaign_info: { campaign_group_code: 'pc_incentive_task_mvp_v3' } }), 'pc_incentive_task_mvp_v3')
+  // 没投放的账号返回空字符串
+  assert.equal(campaignGroup({ ug_campaign_info: { campaign_group_code: '' } }), '')
+  assert.equal(campaignGroup({}), '')
+  assert.equal(campaignGroup(undefined), '')
 })
 
 test('读到未签到状态与奖励', () => {
@@ -75,33 +52,15 @@ test('读到未签到状态与奖励', () => {
   assert.equal(state.group, CAMPAIGN_SCENE)
 })
 
-test('reward_mode=2 的任务用 campaign_item_code 组装领取体', () => {
-  const state = readCheckin(detail([signin()]))
-  assert.equal(state.claimable, true)
-  assert.deepEqual(state.body, {
-    task_id: '',
-    campaign_group_code: CAMPAIGN_SCENE,
-    campaign_item_code: SIGNIN_TASK,
-  })
-})
-
-test('非 direct 任务用 task_id 组装领取体', () => {
-  const task = {
-    campaign_code: 'some_task',
-    campaign_group_code: CAMPAIGN_SCENE,
-    reward_mode: 1,
-    task_status: 2,
-    task_id: 'tid-123',
-    daily_checkin: { checked_in_today: false },
-  }
-  const state = readCheckin(detail([task]))
-  assert.deepEqual(state.body, { task_id: 'tid-123' })
-})
-
-test('任务不满足条件时没有领取体', () => {
-  const state = readCheckin(detail([signin({ checked_in_today: false })].map((t) => ({ ...t, task_status: 3 }))))
+test('task_status 1 判定为不可领', () => {
+  const state = readCheckin(detail([signin({ })].map((t) => ({ ...t, task_status: 1 }))))
   assert.equal(state.claimable, false)
-  assert.equal(state.body, undefined)
+  assert.equal(state.status, 1)
+})
+
+test('task_status 2 才可领', () => {
+  const state = readCheckin(detail([signin()].map((t) => ({ ...t, task_status: 2 }))))
+  assert.equal(state.claimable, true)
 })
 
 test('读到已签到状态', () => {
@@ -126,13 +85,60 @@ test('奖励字段缺失时不编造数值', () => {
   assert.equal(state.streak, undefined)
 })
 
-test('北京时间分日按 Asia/Shanghai 算', () => {
-  // 2026-11-13 00:30 UTC 是北京时间 08:30，同一天
-  assert.equal(beijingDay(new Date('2026-11-13T00:30:00Z')), '2026-11-13')
-  // 2026-11-12 16:30 UTC 是北京时间 13 日 00:30，应算 13 日
-  assert.equal(beijingDay(new Date('2026-11-12T16:30:00Z')), '2026-11-13')
-  // 2026-11-12 15:30 UTC 是北京时间 12 日 23:30
-  assert.equal(beijingDay(new Date('2026-11-12T15:30:00Z')), '2026-11-12')
+/** 造一个会记录写请求的会话 */
+function fakeSession({ launch = { ug_campaign_info: { campaign_group_code: CAMPAIGN_SCENE } }, detailPayload, detailError } = {}) {
+  const writes = []
+  return {
+    writes,
+    ready: async () => {},
+    uid: 'u1',
+    profile: 'p',
+    launch,
+    json: async (path) => {
+      if (path.includes('/detail/')) {
+        if (detailError) throw detailError
+        return detailPayload ?? { data: { tasks: [signin()] } }
+      }
+      if (path.includes('/launch')) return launch
+      return {}
+    },
+    request: async (path) => {
+      writes.push(path)
+      throw new Error('只读实现不该发写请求')
+    },
+  }
+}
+
+test('没投放活动时返回 inactive 且不发写请求', async () => {
+  const session = fakeSession({ launch: { ug_campaign_info: { campaign_group_code: '' } } })
+  const result = await checkin(session)
+  assert.equal(result.outcome, 'inactive')
+  assert.match(result.message, /没有投放签到活动/)
+  assert.deepEqual(session.writes, [])
+})
+
+test('campaign not found 判定为未投放，不是故障', async () => {
+  const session = fakeSession({ detailError: new Error('campaign not found') })
+  const result = await checkin(session)
+  assert.equal(result.outcome, 'inactive')
+  assert.deepEqual(session.writes, [])
+})
+
+test('不可领时说明原因，不发写请求', async () => {
+  const session = fakeSession()
+  const result = await checkin(session)
+  assert.equal(result.outcome, 'ineligible')
+  assert.match(result.message, /没被投放/)
+  assert.equal(result.credit, 200)
+  assert.deepEqual(session.writes, [], '只读实现不应提交领取')
+})
+
+test('已签到时返回 done', async () => {
+  const session = fakeSession({ detailPayload: { data: { tasks: [signin({ checked_in_today: true })] } } })
+  const result = await checkin(session)
+  assert.equal(result.outcome, 'done')
+  assert.match(result.message, /连续 2 天/)
+  assert.deepEqual(session.writes, [])
 })
 
 test('Cookie 头解析', () => {
