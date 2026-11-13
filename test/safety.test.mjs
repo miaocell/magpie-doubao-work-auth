@@ -1,7 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { DesktopSession } from '../lib/session.mjs'
-import { checkin } from '../lib/checkin.mjs'
+
+// 签到账本写到临时目录，别碰真实数据
+const dir = await mkdtemp(join(tmpdir(), 'doubao-checkin-test-'))
+process.env.DOUBAO_WORK_LEDGER = dir
+const { checkin } = await import('../lib/checkin.mjs')
 
 test('exclusive 串行执行，不会并发', async () => {
   const session = new DesktopSession({})
@@ -33,43 +40,80 @@ test('exclusive 里抛错不会堵死队列', async () => {
   assert.equal(await next, 'ok')
 })
 
-test('checkin 只读：不发领取请求', async () => {
-  const calls = []
-  const session = {
+/** 造一个只读会话：所有写请求都会记下来 */
+function fakeSession(state, { claimResult, ledger } = {}) {
+  if (ledger) process.env.DOUBAO_WORK_LEDGER = ledger
+  const writes = []
+  return {
+    writes,
     ready: async () => {},
+    uid: `uid-${Math.random().toString(36).slice(2)}`,
+    profile: 'test',
     json: async (path) => {
-      calls.push(path)
-      return { tasks: [{ campaign_code: 'daily_signin', campaign_group_code: 'g', daily_checkin: { checked_in_today: false, reward: { reward_amount: 200 }, continuous_days: 3 } }] }
+      if (path.includes('/detail/')) return { data: { tasks: [state] } }
+      return {}
     },
-    request: async (path) => {
-      calls.push(`WRITE:${path}`)
-      throw new Error('不该发出写请求')
+    request: async (path, body) => {
+      writes.push({ path, body })
+      if (claimResult instanceof Error) throw claimResult
+      return new Response(JSON.stringify(claimResult ?? { code: 0, data: {} }), { headers: { 'content-type': 'application/json' } })
     },
   }
-  const result = await checkin(session)
-  assert.equal(result.outcome, 'ineligible')
-  assert.equal(result.credit, 200)
-  assert.equal(result.streak, 3)
-  assert.deepEqual(calls, ['/alice/ug/campaign/v3/detail/'], '只应读详情，不应发领取请求')
+}
+
+const task = (overrides = {}) => ({
+  campaign_code: 'daily_signin',
+  campaign_group_code: 'pc_incentive_task_mvp_v3',
+  reward_mode: 2,
+  task_status: 1,
+  daily_checkin: { checked_in_today: false, reward: { reward_amount: 200 }, continuous_days: 3, ...overrides },
 })
 
-test('checkin 已签时返回 done', async () => {
-  const session = {
-    ready: async () => {},
-    json: async () => ({ tasks: [{ campaign_code: 'daily_signin', daily_checkin: { checked_in_today: true, reward: { reward_amount: 200 }, continuous_days: 7 } }] }),
-    request: async () => { throw new Error('不该发请求') },
-  }
+test('已签到时只读，不发领取请求', async () => {
+  const session = fakeSession(task({ checked_in_today: true }))
   const result = await checkin(session)
   assert.equal(result.outcome, 'done')
-  assert.match(result.message, /连续 7 天/)
+  assert.match(result.message, /连续 3 天/)
+  assert.deepEqual(session.writes, [], '已签到时不应发任何写请求')
 })
 
-test('checkin 没有活动时返回 inactive', async () => {
-  const session = {
-    ready: async () => {},
-    json: async () => ({ tasks: [] }),
-    request: async () => { throw new Error('不该发请求') },
-  }
+test('没有签到活动时只读', async () => {
+  const session = fakeSession({ campaign_code: 'other', task_kind: 'chat_activity' })
   const result = await checkin(session)
   assert.equal(result.outcome, 'inactive')
+  assert.deepEqual(session.writes, [])
+})
+
+test('未签时提交一次领取，用正确的字段名', async () => {
+  const session = fakeSession(task(), { claimResult: { code: 0, data: { checked_in: true } } })
+  await checkin(session)
+  assert.equal(session.writes.length, 1)
+  assert.equal(session.writes[0].path, '/alice/ug/campaign/item/reward/claim/')
+  assert.deepEqual(session.writes[0].body, {
+    task_id: '',
+    campaign_group_code: 'pc_incentive_task_mvp_v3',
+    campaign_item_code: 'daily_signin',
+  })
+})
+
+test('同一天第二次调用不会重复提交', async () => {
+  const session = fakeSession(task(), { claimResult: { code: 0, data: {} } })
+  const first = await checkin(session)
+  const writesAfterFirst = session.writes.length
+  const second = await checkin(session)
+  assert.equal(session.writes.length, writesAfterFirst, '第二次不应再发领取请求')
+  assert.ok(['failed', 'claimed', 'done'].includes(second.outcome))
+})
+
+test('遇到风控验证码返回 captcha 且不再提交', async () => {
+  const error = new Error('需要验证')
+  error.status = 429
+  const session = fakeSession(task(), { claimResult: error })
+  const result = await checkin(session)
+  assert.equal(result.outcome, 'captcha')
+  assert.match(result.message, /人工验证/)
+})
+
+test('清理临时账本', async () => {
+  await rm(dir, { recursive: true, force: true })
 })

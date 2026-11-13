@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readCheckin, CAMPAIGN_SCENE, SIGNIN_TASK, _internal } from '../lib/checkin.mjs'
+import { readCheckin, beijingDay, CAMPAIGN_SCENE, SIGNIN_TASK, _internal } from '../lib/checkin.mjs'
 import { parseCookieHeader, cookiesFromHeader, clientInfoFromCookies } from '../lib/cookie-import.mjs'
 
 /** 造一份和 v3/detail 同形的详情 */
@@ -30,6 +30,11 @@ test('签到活动组与任务名是实测值', () => {
   assert.equal(SIGNIN_TASK, 'daily_signin')
 })
 
+test('领取接口是 item/reward/claim，不是 landing/checkin', () => {
+  assert.equal(_internal.CLAIM_PATH, '/alice/ug/campaign/item/reward/claim/')
+  assert.equal(_internal.DETAIL_PATH, '/alice/ug/campaign/v3/detail/')
+})
+
 test('读到未签到状态与奖励', () => {
   const state = readCheckin(detail([signin()]))
   assert.equal(state.found, true)
@@ -37,6 +42,35 @@ test('读到未签到状态与奖励', () => {
   assert.equal(state.points, 200)
   assert.equal(state.streak, 2)
   assert.equal(state.group, CAMPAIGN_SCENE)
+})
+
+test('reward_mode=2 的任务用 campaign_item_code 组装领取体', () => {
+  const state = readCheckin(detail([signin()]))
+  assert.equal(state.claimable, true)
+  assert.deepEqual(state.body, {
+    task_id: '',
+    campaign_group_code: CAMPAIGN_SCENE,
+    campaign_item_code: SIGNIN_TASK,
+  })
+})
+
+test('非 direct 任务用 task_id 组装领取体', () => {
+  const task = {
+    campaign_code: 'some_task',
+    campaign_group_code: CAMPAIGN_SCENE,
+    reward_mode: 1,
+    task_status: 2,
+    task_id: 'tid-123',
+    daily_checkin: { checked_in_today: false },
+  }
+  const state = readCheckin(detail([task]))
+  assert.deepEqual(state.body, { task_id: 'tid-123' })
+})
+
+test('任务不满足条件时没有领取体', () => {
+  const state = readCheckin(detail([signin({ checked_in_today: false })].map((t) => ({ ...t, task_status: 3 }))))
+  assert.equal(state.claimable, false)
+  assert.equal(state.body, undefined)
 })
 
 test('读到已签到状态', () => {
@@ -61,8 +95,13 @@ test('奖励字段缺失时不编造数值', () => {
   assert.equal(state.streak, undefined)
 })
 
-test('Web 侧拒绝码固定', () => {
-  assert.equal(_internal.WEB_BLOCKED, 710010702)
+test('北京时间分日按 Asia/Shanghai 算', () => {
+  // 2026-11-13 00:30 UTC 是北京时间 08:30，同一天
+  assert.equal(beijingDay(new Date('2026-11-13T00:30:00Z')), '2026-11-13')
+  // 2026-11-12 16:30 UTC 是北京时间 13 日 00:30，应算 13 日
+  assert.equal(beijingDay(new Date('2026-11-12T16:30:00Z')), '2026-11-13')
+  // 2026-11-12 15:30 UTC 是北京时间 12 日 23:30
+  assert.equal(beijingDay(new Date('2026-11-12T15:30:00Z')), '2026-11-12')
 })
 
 test('Cookie 头解析', () => {

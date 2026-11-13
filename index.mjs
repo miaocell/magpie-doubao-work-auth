@@ -18,7 +18,7 @@
 import { buildProvider, buildModels, magpieModels } from './lib/models.mjs'
 import { DesktopSession, defaultUserDataDir, FALLBACK_BOT } from './lib/session.mjs'
 import { importDesktop } from './lib/desktop.mjs'
-import { cookiesFromHeader, clientInfoFromCookies, browserCookieSources, readBrowserCookies } from './lib/cookie-import.mjs'
+import { cookiesFromHeader, clientInfoFromCookies } from './lib/cookie-import.mjs'
 import { cookiesFromDebugPort, launchDebugBrowser } from './lib/cdp.mjs'
 import { saveAccount, loadAccount, listAccounts, removeAccount } from './lib/vault.mjs'
 import { chat } from './lib/chat.mjs'
@@ -165,27 +165,32 @@ export default async function DoubaoPodPlugin(input = {}) {
           async authorize(_inputs, { signal } = {}) {
             let launched
             try {
-              launched = await launchDebugBrowser({ port: 9222 })
+              launched = await launchDebugBrowser()
             } catch (cause) {
               return { type: 'failed', error: String(cause.message || cause).slice(0, 480) }
             }
 
-            // 等用户在窗口里登录：反复问调试端口，直到拿到 sessionid
-            const deadline = Date.now() + 5 * 60_000
+            // 等用户在窗口里登录：反复问调试端口，直到拿到 sessionid。
+            // 无论成败都要关掉浏览器并清临时目录。
             let cookies
-            while (Date.now() < deadline) {
-              signal?.throwIfAborted()
-              try {
-                const found = await cookiesFromDebugPort('doubao.com')
-                if (found.cookies?.length) { cookies = found.cookies; break }
-              } catch { /* 还没登录，继续等 */ }
-              await new Promise((resolve) => setTimeout(resolve, 2_000))
+            try {
+              const deadline = Date.now() + 5 * 60_000
+              while (Date.now() < deadline) {
+                signal?.throwIfAborted()
+                try {
+                  const found = await cookiesFromDebugPort('doubao.com', launched.port)
+                  if (found.cookies?.length) { cookies = found.cookies; break }
+                } catch { /* 还没登录，继续等 */ }
+                await new Promise((resolve) => setTimeout(resolve, 2_000))
+              }
+            } finally {
+              await launched.close()
             }
 
             if (!cookies?.length) {
               return {
                 type: 'failed',
-                error: `等了 5 分钟没检测到豆包登录（${launched.name} 窗口已打开）。登录完成后再点一次，或改用「粘贴豆包 Cookie」。`,
+                error: `等了 5 分钟没检测到豆包登录（${launched.name} 窗口已关闭）。可以重试，或改用「粘贴豆包 Cookie」。`,
               }
             }
 
@@ -213,76 +218,7 @@ export default async function DoubaoPodPlugin(input = {}) {
           },
         },
 
-        // ② 从本机浏览器读 —— 已经登录过豆包网页的话一键就好
-        {
-          type: 'api',
-          keyless: true,
-          label: '从本机浏览器读取豆包登录态',
-          placeholder: 'Chrome / Edge 里已登录豆包',
-
-          async authorize(_inputs, { signal } = {}) {
-            // 先试调试端口：浏览器运行时会独占锁住 Cookies 文件，文件级复制一律 EBUSY，
-            // 而调试端口能直接问浏览器要 Cookie，不受锁影响。
-            let viaDebug
-            try {
-              const found = await cookiesFromDebugPort('doubao.com')
-              if (found.cookies?.length) viaDebug = found
-            } catch { /* 没有调试端口，退回读文件 */ }
-
-            if (viaDebug) {
-              const clientInfo = clientInfoFromCookies(viaDebug.cookies)
-              const session = new DesktopSession(
-                { profile: 'debug-port', cookieSnapshot: viaDebug.cookies, clientInfo, bot: '' },
-                { importer: async () => ({ profile: 'debug-port', cookies: viaDebug.cookies, clientInfo, clientVersion: '' }) },
-              )
-              try {
-                await session.ready(signal)
-              } catch (cause) {
-                return { type: 'failed', error: `调试端口读到的 Cookie 校验失败：${String(cause.message || cause).slice(0, 420)}` }
-              }
-              await adopt(session, { profile: `debug:${viaDebug.port}` })
-              return {
-                type: 'success',
-                key: JSON.stringify({ version: 1, uid: session.uid, source: 'debug-port', bot: session.bot }),
-                accountId: String(session.uid),
-                metadata: { email: `${session.name} · 调试端口 ${viaDebug.port}`, uid: session.uid, source: 'debug-port' },
-              }
-            }
-
-            let sources
-            try { sources = await browserCookieSources() }
-            catch (cause) { return { type: 'failed', error: `扫描浏览器失败：${cause.message}` } }
-            if (!sources.length) {
-              return {
-                type: 'failed',
-                error: '没找到 Chrome / Edge 的 Cookies 库。可以改用「粘贴豆包 Cookie」。',
-              }
-            }
-            const errors = []
-            for (const source of sources) {
-              try {
-                const cookies = await readBrowserCookies(source)
-                const clientInfo = clientInfoFromCookies(cookies)
-                const session = new DesktopSession({ profile: source.profile, cookieSnapshot: cookies, clientInfo, bot: '' }, {
-                  importer: async () => ({ profile: source.profile, cookies, clientInfo, clientVersion: '' }),
-                })
-                await session.ready(signal)
-                await adopt(session, { profile: `browser:${source.profile}` })
-                return {
-                  type: 'success',
-                  key: JSON.stringify({ version: 1, uid: session.uid, source: 'browser', bot: session.bot }),
-                  accountId: String(session.uid),
-                  metadata: { email: `${session.name} · ${source.profile}`, uid: session.uid, source: 'browser' },
-                }
-              } catch (cause) {
-                errors.push(`${source.profile}: ${String(cause.message || cause).slice(0, 120)}`)
-              }
-            }
-            return { type: 'failed', error: `浏览器里没找到可用的豆包登录态（${errors.slice(0, 2).join('；')}）` }
-          },
-        },
-
-        // ③ 从豆包工作客户端读 —— 装了客户端才有的选项
+        // ② 从豆包工作客户端读 —— 装了客户端才有的选项
         {
           type: 'api',
           keyless: true,
