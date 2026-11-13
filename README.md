@@ -1,4 +1,4 @@
-# doubao-work-magpie
+# magpie-doubao-work-auth
 
 <a href="https://linux.do"><img src="https://img.shields.io/badge/LINUX%20DO-%E7%A4%BE%E5%8C%BA-FFB003?style=flat-square" alt="LINUX DO 社区" /></a>
 
@@ -53,8 +53,8 @@
 ## 装
 
 ```sh
-git clone https://github.com/miaocell/doubao-work-magpie.git
-magpie plugin add ./doubao-work-magpie
+git clone https://github.com/miaocell/magpie-doubao-work-auth.git
+magpie plugin add ./magpie-doubao-work-auth
 magpie plugin login doubao
 magpie provider test doubao
 magpie quota
@@ -123,9 +123,9 @@ magpie quota
 
 | 文件 | 位置 |
 | --- | --- |
-| 账号保管库 | `%LOCALAPPDATA%\doubao-work-magpie\vault\`（Windows）<br>`~/.config/doubao-work-magpie/vault/`（macOS / Linux） |
-| 登录用浏览器配置 | `%LOCALAPPDATA%\doubao-work-magpie\browser-profile\` |
-| 临时会话清理记录 | `%LOCALAPPDATA%\doubao-work-magpie\conversations\` |
+| 账号保管库 | `%LOCALAPPDATA%\magpie-doubao-work-auth\vault\`（Windows）<br>`~/.config/magpie-doubao-work-auth/vault/`（macOS / Linux） |
+| 登录用浏览器配置 | `%LOCALAPPDATA%\magpie-doubao-work-auth\browser-profile\` |
+| 临时会话清理记录 | `%LOCALAPPDATA%\magpie-doubao-work-auth\conversations\` |
 
 可用 `DOUBAO_WORK_VAULT` 覆盖保管库位置。每个账号一个 `.bin`，内容经 DPAPI 加密。
 
