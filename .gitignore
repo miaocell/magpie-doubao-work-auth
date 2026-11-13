@@ -1,0 +1,21 @@
+# 账号保管库（DPAPI 加密的 Cookie）
+vault/
+
+# 登录用浏览器配置
+browser-profile/
+
+# 临时会话清理记录
+conversations/
+
+# 发帖素材（不入库）
+发帖素材.md
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+*.log
+node_modules/
+
+# 本地临时文件
+*.part
+.probe*
