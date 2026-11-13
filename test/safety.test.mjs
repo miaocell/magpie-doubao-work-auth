@@ -49,8 +49,10 @@ function fakeSession(state, { claimResult, ledger } = {}) {
     ready: async () => {},
     uid: `uid-${Math.random().toString(36).slice(2)}`,
     profile: 'test',
+    launch: { ug_campaign_info: { campaign_group_code: 'pc_incentive_task_mvp_v3' } },
     json: async (path) => {
       if (path.includes('/detail/')) return { data: { tasks: [state] } }
+      if (path.includes('/launch')) return this?.launch ?? {}
       return {}
     },
     request: async (path, body) => {

@@ -1,7 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readCheckin, beijingDay, CAMPAIGN_SCENE, SIGNIN_TASK, _internal } from '../lib/checkin.mjs'
+import { readCheckin, beijingDay, CAMPAIGN_SCENE, SIGNIN_TASK, campaignGroup, checkin, _internal } from '../lib/checkin.mjs'
 import { parseCookieHeader, cookiesFromHeader, clientInfoFromCookies } from '../lib/cookie-import.mjs'
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+// 签到账本放临时目录，探测循环别写真实数据
+process.env.DOUBAO_WORK_LEDGER = await mkdtemp(join(tmpdir(), 'doubao-checkin-edge-'))
 
 /** 造一份和 v3/detail 同形的详情 */
 function detail(tasks) {
@@ -23,6 +29,31 @@ const signin = (overrides = {}) => ({
     total_days: 2,
     ...overrides,
   },
+})
+
+test('从 launch 读账号实际投放的活动组', () => {
+  assert.equal(_internal.campaignGroup({ ug_campaign_info: { campaign_group_code: 'pc_incentive_task_mvp_v3' } }), 'pc_incentive_task_mvp_v3')
+  // 没投放的账号返回空字符串
+  assert.equal(_internal.campaignGroup({ ug_campaign_info: { campaign_group_code: '' } }), '')
+  assert.equal(_internal.campaignGroup({}), '')
+  assert.equal(_internal.campaignGroup(undefined), '')
+})
+
+test('campaign not found 判定为未投放，不是故障', async () => {
+  const err = new Error('campaign not found')
+  const session = {
+    ready: async () => {},
+    uid: 'u1', profile: 'p',
+    launch: { ug_campaign_info: { campaign_group_code: 'g1' } },
+    json: async (path) => {
+      if (path.includes('/detail/')) throw err
+      return {}
+    },
+    request: async () => { throw new Error('不该发写请求') },
+  }
+  const result = await checkin(session)
+  assert.equal(result.outcome, 'inactive')
+  assert.match(result.message, /没有投放签到活动/)
 })
 
 test('签到活动组与任务名是实测值', () => {
