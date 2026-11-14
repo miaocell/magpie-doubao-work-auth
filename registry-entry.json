@@ -1,6 +1,7 @@
 {
   "package": "magpie-doubao-work-auth",
   "name": "豆包工作",
+  "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiMyYjZjZjYiLz48cGF0aCBkPSJNMTggMjRoMjBhOCA4IDAgMCAxIDggOHY4SDI2YTggOCAwIDAgMS04LTh6IiBmaWxsPSIjZmZmIiBvcGFjaXR5PSIuOTIiLz48Y2lyY2xlIGN4PSIzMCIgY3k9IjMyIiByPSIzIiBmaWxsPSIjMmI2Y2Y2Ii8+PGNpcmNsZSBjeD0iNDAiIGN5PSIzMiIgcj0iMyIgZmlsbD0iIzJiNmNmNiIvPjxwYXRoIGQ9Ik0xNCA0NGgzNiIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPg==",
   "providers": [
     "doubao"
   ],
