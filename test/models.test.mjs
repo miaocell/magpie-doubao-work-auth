@@ -165,10 +165,20 @@ test('基线模型的倍率与截图一致', () => {
   assert.equal(catalog.get('doubao-auto').free, true, '自动应标为免费')
 })
 
-test('倍率显示在模型名里，cost 不编造价格', () => {
+test('倍率写进 rate 字段，名字保持干净', () => {
   const models = magpieModels(fallbackModels())
-  assert.equal(models['doubao-glm-5-3'].name, 'GLM 5.3 · 0.80x')
-  assert.equal(models['doubao-auto'].name, '自动 · 小额免费')
+  // 名字只放模型本名，界面用 rate 渲染成徽章，不再把倍率拼进字符串
+  assert.equal(models['doubao-glm-5-3'].name, 'GLM 5.3')
+  assert.equal(models['doubao-auto'].name, '自动')
+  // magpie 的自定义字段：一次请求消耗的倍数
+  assert.equal(models['doubao-glm-5-3'].rate, 0.8)
+  assert.equal(models['doubao-deepseek-v4-1-flash'].rate, 0.01)
+  assert.equal(models['doubao-kimi-k3'].rate, 1.48)
+  // 免费档用 0 表示不计费
+  assert.equal(models['doubao-auto'].rate, 0)
+  // 上下文用真实值，界面自己渲染成 256K / 300K
+  assert.equal(models['doubao-glm-5-3'].limit.context, 300000)
+  assert.equal(models['doubao-auto'].limit.context, 256000)
   // 豆包按订阅额度扣费，没有每百万 token 的单价可填
-  assert.deepEqual(models['doubao-glm-5-3'].cost, { input: 0, output: 0, cache_read: 0, cache_write: 0 })
+  assert.deepEqual(models["doubao-glm-5-3"].cost, { input: 0, output: 0, cache: { read: 0, write: 0 } })
 })
