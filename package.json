@@ -1,6 +1,6 @@
 {
   "name": "magpie-doubao-work-auth",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "豆荚：把豆包工作（Doubao Work）的订阅积分变成 magpie 网关上的模型，供其他 Agent 使用",
   "type": "module",
   "main": "./index.mjs",

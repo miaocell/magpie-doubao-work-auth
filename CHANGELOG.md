@@ -4,6 +4,11 @@
 
 版本号：大改动动第二位（`0.2` → `0.3`），日常修复加第三位（`0.3.0` → `0.3.1`）。没有 npm 包也没有发行版，所以这里就是唯一的版本依据。
 
+## 0.3.2（2026-11-18）
+
+- **工具回复被截断时不再让整轮请求失败。** 豆包偶尔在长工具参数中途停止输出，正文 JSON 缺结尾，`decodeReply` 直接 `JSON.parse` 整段就抛 `invalid_tool_response`（502），调用方看到的是整轮 provider error。现在解析失败会重开一次会话重试；仍失败则把正文当普通回复返回（`finish_reason=stop`），会话不中断。
+- **JSON 前后带解释或 Markdown 围栏时也能解析。** 之前只认正文首字符是 `{` 的情况，现在依次尝试围栏内、整段、首尾大括号之间三段。
+
 ## 0.3.1（2026-11-16）
 
 - **支持 Codex 的 Responses 协议。** Codex 默认 `wire_api = "responses"`，发的是 `input` 而不是 `messages`，之前会被当成「请求缺少 messages」拒掉，Codex 侧只看到 `server_error` 或 `delegated input protocol violation`。现在请求和响应都做了双向折叠，Codex 不用改配置。

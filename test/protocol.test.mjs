@@ -204,3 +204,36 @@ test('推理档位传数字时归一化成名字，不静默丢弃', () => {
   const unknown = prepareRequest({ model: 'm', messages: [{ role: 'user', content: 'hi' }], reasoning_effort: 99 })
   assert.equal(unknown.request.reasoning_effort, undefined)
 })
+
+function toolPrepared(extra = {}) {
+  return prepareRequest({
+    model: 'm',
+    messages: [{ role: 'user', content: 'x' }],
+    tools: [{ type: 'function', function: { name: 't', parameters: { type: 'object' } } }],
+    ...extra,
+  })
+}
+
+test('工具回复被截断时仍按契约报错', () => {
+  // 豆包偶发在长参数中途停止，正文缺结尾；这是调用方该看到的重试信号
+  const truncated = '{"content":"","tool_calls":[{"name":"t","arguments":{"body":"写了一半'
+  assert.throws(() => decodeReply(truncated, toolPrepared()), (error) => error.code === 'invalid_tool_response')
+})
+
+test('lenient 下截断正文降级为普通回复，不抛错', () => {
+  const prepared = toolPrepared()
+  const truncated = '{"content":"","tool_calls":[{"name":"t","arguments":{"body":"写了一半'
+  const message = decodeReply(truncated, prepared, { lenient: true })
+  assert.equal(message.tool_calls, undefined)
+  assert.match(message.content, /tool_calls/)
+})
+
+test('JSON 被 Markdown 围栏包住时仍能解析出工具调用', () => {
+  const message = decodeReply('```json\n{"content":"","tool_calls":[{"name":"t","arguments":{}}]}\n```', toolPrepared())
+  assert.equal(message.tool_calls[0].function.name, 't')
+})
+
+test('JSON 前后带解释文字时仍能解析出工具调用', () => {
+  const message = decodeReply('好的，调用如下：{"tool_calls":[{"name":"t","arguments":{}}]} 完成', toolPrepared())
+  assert.equal(message.tool_calls[0].function.name, 't')
+})
