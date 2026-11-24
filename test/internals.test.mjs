@@ -18,7 +18,15 @@ test('profile 解析遵循 Local State 的 last_used', () => {
   assert.equal(desktopInternal.resolveProfile({ profile: { last_used: 'Profile 3' } }, 'auto'), 'Profile 3')
   assert.equal(desktopInternal.resolveProfile({}, 'auto'), 'Default')
   assert.equal(desktopInternal.resolveProfile({ profile: { last_used: 'Profile 3' } }, 'Default'), 'Default')
-  assert.throws(() => desktopInternal.resolveProfile({}, '../../etc'), /auto、Default/)
+})
+
+test('profile 不再限制成 Default / Profile N：客户端真实布局是 aha/users/<hash>/profile_explorer', () => {
+  // 豆包工作客户端把登录态放在 aha/users/<hash>/profile_explorer 下面，
+  // 之前正则只认 Default|Profile N，自动查找必然落空。
+  assert.equal(
+    desktopInternal.resolveProfile({}, 'aha/users/abc123/profile_explorer'),
+    'aha/users/abc123/profile_explorer',
+  )
 })
 
 test('没有 app-bound 前缀时拒绝解密并给出可行建议', () => {
