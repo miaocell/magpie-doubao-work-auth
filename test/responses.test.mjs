@@ -8,7 +8,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { responsesToChat, chatToResponses } from '../lib/responses.mjs'
+import { responsesToChat, chatToResponses, responsesEventStream } from '../lib/responses.mjs'
 import { estimateTokens } from '../lib/chat.mjs'
 
 test('input 是字符串时折成一条 user 消息', () => {
@@ -113,4 +113,23 @@ test('token 估算：中文按字，英文按四字符', () => {
   // 8 个字符的英文约 2 个 token
   assert.equal(estimateTokens('abcdefgh'), 2)
   assert.ok(estimateTokens('中文 and english mixed') > 0)
+})
+
+test('客户端断开时主动放掉上游迭代器', async () => {
+  // 之前没有 cancel 处理器：客户端取消后上游还会继续跑到结束，白生成也白计费。
+  let released = 0
+  async function* source() {
+    try {
+      for (let i = 0; i < 100; i++) yield { content: `块${i}` }
+    } finally {
+      released++
+    }
+  }
+  const stream = responsesEventStream({ created: 1, model: 'm' }, source(), () => ({ input_tokens: 0, output_tokens: 0, total_tokens: 0 }))
+  const reader = stream.getReader()
+  await reader.read() // 先读一个事件，确认流已经启动
+  await reader.cancel()
+  // cancel 后给微任务一点时间跑 finally
+  await new Promise((r) => setTimeout(r, 20))
+  assert.equal(released, 1, '上游迭代器的 finally 应该被执行（说明被提前释放）')
 })
