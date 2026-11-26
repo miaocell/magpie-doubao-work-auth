@@ -4,7 +4,7 @@
 
 ## 0.4.7（2026-11-26）
 
-> 感谢 [@WeeZHnMin](https://github.com/WeeZHnMin) 在 [#17](https://github.com/miaocell/magpie-doubao-work-auth/issues/17) 里指出这两个问题。完整致谢见 [CREDITS.md](CREDITS.md)。
+> 感谢 [@WeeZHnMin](https://github.com/WeeZHnMin) 在 [#17](https://github.com/miaocell/magpie-doubao-work-auth/issues/17) 里指出这两个问题。
 
 - **短回复也能流式了。** 0.4.6 里判断「这段输出是工具 JSON 还是正文」要攒够 200 字符，短回复永远攒不够，于是一直等到整段生成完才吐字——实测那段是 6-12 秒，等于没流式。现在只看第一个非空块的首字符：`{` 或 ` ``` ` 就转缓冲，其余立刻流式转发。日常短问答（「改这一行」「是/否」）受益最明显。
 - **修了 `/responses` 流式路径不解析工具调用。** 那条路径把上游增量直接当正文发给客户端，带工具时 `{"content":"","tool_calls":[...]}` 会原样出现在正文里，Codex 收不到 `function_call`。现在和 `/chat/completions` 一样收完整段后解析。
