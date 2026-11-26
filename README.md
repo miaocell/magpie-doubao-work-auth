@@ -2,7 +2,7 @@
 
 <a href="https://linux.do"><img src="https://img.shields.io/badge/LINUX%20DO-%E7%A4%BE%E5%8C%BA-FFB003?style=flat-square" alt="LINUX DO 社区" /></a>
 
-> 这个插件的很多改进来自别人的反馈和代码，名单见 [CREDITS.md](CREDITS.md)。
+> 感谢所有人的反馈和建议，名单见 [CREDITS.md](CREDITS.md)。
 
 **无需登录豆包客户端，本机无需下载豆包工作。** 把豆包工作（Doubao Work）的订阅额度接成 [magpie](https://usemagpie.ai) 网关上的一组模型：登录一次之后，Claude Code、Codex、OpenCode 或任何走 OpenAI 兼容接口的客户端都能直接调用，消耗的是这个豆包工作账号的积分。
 
