@@ -133,3 +133,35 @@ test('客户端断开时主动放掉上游迭代器', async () => {
   await new Promise((r) => setTimeout(r, 20))
   assert.equal(released, 1, '上游迭代器的 finally 应该被执行（说明被提前释放）')
 })
+
+test('responses 流式路径也要解析工具调用，不能把 JSON 当正文发出去', async () => {
+  // 之前 responsesEventStream 直接把上游增量当 output_text 发，
+  // 带工具的请求会把 {"content":"","tool_calls":[...]} 原样流给 Codex。
+  const { decodeReply } = await import('../lib/protocol.mjs')
+  const prepared = {
+    tools: [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object', properties: { path: { type: 'string' } } } } }],
+    prompt: 'p', structured: false, toolChoice: 'auto', parallel: true,
+  }
+  async function* deltas() {
+    yield { content: '{"content":"","tool_calls":[{"name":"read_file","arguments":{"path":"a.txt"}}]}' }
+  }
+  const res = responsesEventStream(
+    { created: 1, model: 'm' },
+    deltas(),
+    () => ({ input_tokens: 0, output_tokens: 0, total_tokens: 0 }),
+    prepared,
+    decodeReply,
+  )
+  // responsesEventStream 返回裸 ReadableStream
+  const reader = res.getReader()
+  const dec = new TextDecoder()
+  let text = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    text += dec.decode(value, { stream: true })
+  }
+  assert.ok(text.includes('function_call'), '应产出 function_call 事件')
+  assert.ok(text.includes('read_file'), '工具名要出现')
+  assert.ok(!text.includes('output_text.delta'), '不该把 JSON 当正文发出去')
+})

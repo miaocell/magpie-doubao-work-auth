@@ -51,22 +51,30 @@ async function* deltas(pieces) {
   for (const p of pieces) yield p
 }
 
-test('短回复在判断窗口内被合并成一条（设计如此）', async () => {
-  // 判断形态要先收一小段（200 字符）。短回复整段都落在窗口里，
-  // 所以是一次性发出的——这不是 bug，因为省下来的等待时间只有几十个 token。
+test('短回复也应该逐块转发（issue #17）', async () => {
+  // 之前攒 200 字符串才判定，短回复永远攒不够 → 一直等到整段生成完才吐字，
+  // 实测那段时间 6-12 秒。现在只看首字符决定形态，短回复立刻走流式。
   const prepared = PREPARED
   const source = deltas([
-    { content: '第一段' },
-    { content: '第二段' },
-    { content: '第三段' },
+    { content: '1、' },
+    { content: '2、3、4、5' },
   ])
   const stream = sseResponse(source, META, prepared, new AbortController())
   const events = await drain(stream)
 
   const contents = events.filter((e) => e?.choices?.[0]?.delta?.content).map((e) => e.choices[0].delta.content)
-  assert.deepEqual(contents, ['第一段第二段第三段'], '短回复在窗口内合并成一条')
+  assert.deepEqual(contents, ['1、', '2、3、4、5'], '短回复也要分块转发，不能攒到最后')
   assert.ok(events.some((e) => e?.choices?.[0]?.finish_reason === 'stop'), '结尾要有 stop')
   assert.equal(events.at(-1), '[DONE]')
+})
+
+test('首块就是工具 JSON 时直接走缓冲', async () => {
+  const prepared = PREPARED
+  const json = '{"content":"","tool_calls":[{"name":"read_file","arguments":{"path":"a"}}]}'
+  const stream = sseResponse(deltas([{ content: json }]), META, prepared, new AbortController())
+  const events = await drain(stream)
+  assert.ok(events.some((e) => e?.choices?.[0]?.delta?.tool_calls), '应产出 tool_calls')
+  assert.ok(events.some((e) => e?.choices?.[0]?.finish_reason === 'tool_calls'))
 })
 
 test('超过判断窗口的回复会分多次转发', async () => {
