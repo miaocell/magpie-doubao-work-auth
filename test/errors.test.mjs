@@ -71,7 +71,49 @@ test('风控验证带 X-Magpie-Refused，让 magpie 不要换账号重试', asyn
 })
 
 test('普通错误不带 refused，仍允许 magpie 换账号', () => {
+  // 真的只是限流（没有 decision）时才允许重试/换账号
   const error = upstreamError({ error_code: 710012004 }, 429)
   assert.equal(error.refused, undefined)
   assert.equal(errorResponse(error).headers.get('X-Magpie-Refused'), null)
+})
+
+test('风控走 429（710012004 + decision）也要 refused，不能当普通限流重试', async () => {
+  // Issue #22：豆包有两条风控出口，710022004 走 403、710012004 走 429。
+  // 429 这条以前当普通限流，magpie 按 1s/2s/4s… 退避重试到 8 次，
+  // 每次都真实打到上游，账号永远解不开。
+  const decision = JSON.stringify({ subtype: 'semantic_reasoning' })
+  const error = upstreamError({
+    error_code: 710012004,
+    error_msg: 'rate limited',
+    extra: { decision },
+  })
+
+  assert.equal(error.status, 429, '状态码保持 429，不改上游语义')
+  assert.equal(error.code, 'captcha_required', '但按风控处理')
+  assert.ok(error.refused, '风控 429 必须带 refused')
+
+  const response = errorResponse(error)
+  assert.equal(response.status, 429)
+  const header = response.headers.get('X-Magpie-Refused')
+  assert.ok(header, '响应里要有 X-Magpie-Refused 头')
+  assert.match(header, /^[\x21-\x7e]+$/)
+})
+
+test('风控 429 的文案按 subtype 分开，不是一律「去网页验证」', () => {
+  // subtype 说是限流时，就不该让人跑去网页点验证——点了也没用
+  const rate = upstreamError({
+    error_code: 710012004,
+    error_msg: 'rate limited',
+    extra: { decision: JSON.stringify({ subtype: 'rate_limit' }) },
+  })
+  assert.match(rate.message, /停几分钟/)
+  assert.ok(rate.refused, '就算 subtype 是限流，带 decision 也说明是风控，仍不重试')
+
+  // subtype 说是设备/会话异常时，提示要指向重新登录
+  const device = upstreamError({
+    error_code: 710012004,
+    error_msg: 'rate limited',
+    extra: { decision: JSON.stringify({ subtype: 'device_check' }) },
+  })
+  assert.match(device.message, /重新登录/)
 })
