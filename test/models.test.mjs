@@ -227,3 +227,33 @@ test('图片输入标成支持，且是「明确说过」而不是默认', () =>
   assert.equal(first.capabilities.input.video, false)
   assert.equal(first.capabilities.input.pdf, false)
 })
+
+test('模型 id 不随上游 key 的写法变化', () => {
+  // 上游 key 的写法不固定：person-qwen4-max 和 person-qwen3-8-max 一个不带连字符、
+  // 一个带；person-glm-5-4 和 person-deepseek-v4-1-flash-261017 一个有日期后缀。
+  // 之前 slugify 直接照抄 key，上游一改写法 id 就跟着变，用户模型列表里
+  // 就多出一份「新模型」——其实是同一个，还没有倍率，也查不出原因。
+  const slugify = _internal.slugify
+
+  // 同一个模型的几种历史写法，必须都落到同一个 id
+  const same = [
+    ['person-qwen4-max', 'qwen4-max'],
+    ['person-qwen-4-max-261111', 'qwen4-max'],
+    ['person-qwen4-max-261111', 'qwen4-max'],
+  ]
+  for (const [key, want] of same) {
+    assert.equal(slugify('Qwen 4 Max', key), want, `${key} 应得到 ${want}`)
+  }
+
+  // 点号 / 连字符两种版本也要一致
+  assert.equal(_internal.slugify('GLM 5.4', 'person-glm-5.4'), 'glm-5-4')
+  assert.equal(_internal.slugify('GLM 5.4', 'person-glm-5-4'), 'glm-5-4')
+  assert.equal(_internal.slugify('x', 'person-deepseek-v4.1-flash'), 'deepseek-v4-1-flash')
+  assert.equal(_internal.slugify('x', 'person-deepseek-v4-1-flash-261017'), 'deepseek-v4-1-flash')
+
+  // 日期后缀不影响 id
+  assert.equal(_internal.slugify('x', 'person-glm-5-4-261211'), 'glm-5-4')
+
+  // 表里没有的新模型走兜底，第一次出现是什么就是什么
+  assert.equal(_internal.slugify('x', 'person-new-model-x'), 'new-model-x')
+})

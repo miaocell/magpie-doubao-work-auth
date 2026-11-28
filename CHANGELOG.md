@@ -2,6 +2,11 @@
 
 只记对使用者有影响的改动，内部重构不写。倒序排列。
 
+## 0.4.13（2026-11-28）
+
+- **模型列表里的重复条目不会再长了。** 之前同一个模型会在列表里出现两三次（`qwen4-max` / `qwen-4-max` / `doubao-qwen4-max`），多出来的那几份没有倍率。原因是模型 id 直接从上游 key 推导，而上游的写法不固定——`person-qwen4-max` 不带连字符、`person-qwen3-8-max` 带；`person-glm-5-4` 没有日期后缀、`person-deepseek-v4-1-flash-261017` 有。上游换个写法，我们 id 就跟着换，magpie 那边的 `chosen` 只增不删，于是当新模型又列一遍。
+  现在改成写死的对照表，模型名对应的 id 不再变动；表里没有的新模型才走兜底派生。**已经多出来的旧条目清不掉**——那些记在 `~/.cache/magpie/providers-state.json` 的 `chosen` 里，得手动改（关掉 magpie 再改，否则退出时会被内存里的覆盖回去）。
+
 ## 0.4.12（2026-11-28）
 
 - **图片能力在客户端侧真正生效了。** 0.4.9 打通了上传链路，但 `capabilities.attachment` 还留着 `false`、注释也还写着「没打通」。更要紧的是没意识到 magpie 的判断入口：`host.js` 里是 `image = !!capabilities.input.image`、`imageSaid = typeof capabilities.input.image === "boolean"`，两个都为真才往下游 agent 写 vision / modalities。现在 `attachment` 改成 `true`，加了一条测试钉住这个契约——不然以后谁顺手改回去，用户那边就又没选图入口了。
