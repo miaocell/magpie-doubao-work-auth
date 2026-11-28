@@ -173,11 +173,24 @@ export default async function DoubaoPodPlugin(input = {}) {
 
             // 等用户在窗口里登录：反复问调试端口，直到拿到 sessionid。
             // 无论成败都要关掉浏览器并清临时目录。
+            //
+            // 关于 abort（issue #19）：magpie 在请求超时 / 客户端重连 / 界面刷新时
+            // 会 abort 这次 authorize，以前会立刻走 finally 关掉浏览器，
+            // 表现就是「刚发验证码窗口就没了」。现在收到 abort 后不立刻关，
+            // 先继续等一小会儿——用户很可能正卡在验证码那一步，直接掐掉体验很差。
+            // 真正要收尾的时候（超时 / 取消 / 成功）还是照常关。
             let cookies
+            let aborted = false
             try {
               const deadline = Date.now() + 5 * 60_000
+              let abortGraceUntil = 0
               while (Date.now() < deadline) {
-                signal?.throwIfAborted()
+                if (signal?.aborted && !aborted) {
+                  aborted = true
+                  abortGraceUntil = Date.now() + 90_000 // 收到取消后再宽限 90 秒
+                }
+                if (aborted && Date.now() > abortGraceUntil) break
+
                 try {
                   const found = await cookiesFromDebugPort('doubao.com', launched.port)
                   if (found.cookies?.length) { cookies = found.cookies; break }
@@ -191,7 +204,9 @@ export default async function DoubaoPodPlugin(input = {}) {
             if (!cookies?.length) {
               return {
                 type: 'failed',
-                error: `等了 5 分钟没检测到豆包登录（${launched.name} 窗口已关闭）。可以重试，或改用「粘贴豆包 Cookie」。`,
+                error: aborted
+                  ? `登录窗口已关闭。\n\n如果是不小心关掉的，重试一次就好；也可以改用「粘贴豆包 Cookie」，不用开浏览器更稳。`
+                  : `等了 5 分钟没看到登录成功（${launched.name} 窗口已关闭）。\n\n如果刚才在输验证码，重试一次、中间别切走窗口；也可以改用「粘贴豆包 Cookie」。`,
               }
             }
 

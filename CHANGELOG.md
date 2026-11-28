@@ -2,6 +2,18 @@
 
 只记对使用者有影响的改动，内部重构不写。倒序排列。
 
+## 0.4.8（2026-11-28）
+
+> 感谢 [@fetdog](https://github.com/fetdog)（[#18](https://github.com/miaocell/magpie-doubao-work-auth/issues/18)）、[@WeeZHnMin](https://github.com/WeeZHnMin)（[#17](https://github.com/miaocell/magpie-doubao-work-auth/issues/17)）、[@notbesttime](https://github.com/notbesttime)（[#10](https://github.com/miaocell/magpie-doubao-work-auth/issues/10)）的报告，这一版主要是他们指出来的问题。
+
+- **开推理档时工具调用会丢（#18）。** 豆包开推理档会先流一大段 `reasoning_content`，正文要等推理结束才来。0.4.7 的形态判定把「只有 reasoning、没有正文」当成可以判定，于是判成普通正文，后面的工具 JSON 被原样透传给客户端——客户端只看到一坨原文，这一轮调用直接丢失，表现出来就是「首字特别慢、而且不是流式，是瞬间出一大段」。
+  现在 `reasoning_content` 完全不参与判定、收到就转发；等不到正文时按缓冲处理（判错成缓冲只是慢几秒，判错成正文会丢掉整轮调用，代价不对等）。真机验证：`reasoning_effort: max` + 工具定义，4 块 reasoning 先到，`tool_calls` 正确解析、正文为空。
+- **压缩判定改成按字符数。** 上游限制的是单条 `text_block` 的字符数（约 262,144 = 256 KiB），跟字节数、token 数都无关——中文 20 万字符有 60 万字节，按旧的字节判会被白白压掉。超限时新增 `prompt_too_long` 错误，直接说明字符数和上限，不再让人对着「参数错误」猜。
+- **「从客户端读取」修好了（方向和之前不同）。** 之前按 issue 里说的去 `User Data\aha\users\<hash>\profile_explorer` 找，实测那个目录下只有缓存、没有 Cookies 文件。真实登录态在标准的 `Default` / `Profile 2` 下，具体哪个由 `Local State` 的 `profile.last_used` 决定。另外客户端开着时激活的 profile 文件是独占锁的，现在会直接说明「先把豆包工作完全退出」而不是吐一个 `EBUSY`。
+- **浏览器登录窗口不再被顺带杀掉（#19）。** 原来启动浏览器用 `detached: false`，magpie 重载插件或重启时子进程会被一起带走，用户正输验证码窗口就没了。改成独立进程，并在 Windows 上用 `taskkill /T` 杀进程树收尾。启动探测也分了情况：进程一退出就立刻报真实原因，不再干等十几秒。
+- **活动赠送额度用满后不再被当成整体用量（#20）。** 服务端在已用满时仍可能返回 `usage_exhausted: false`，只看这个标志会让 magpie 拿满格的赠送池当总进度、显示「几乎用尽」，而订阅额度其实还剩很多。现在同时按窗口实际用量判断。
+- **损坏的 Cookie 文件给出可读错误。** 空文件或截断文件以前抛 `RangeError: Attempt to access memory outside buffer bounds`，现在说清楚「文件不完整，可能客户端还没写完」。
+
 ## 0.4.7（2026-11-26）
 
 > 感谢 [@WeeZHnMin](https://github.com/WeeZHnMin) 在 [#17](https://github.com/miaocell/magpie-doubao-work-auth/issues/17) 里指出这两个问题。

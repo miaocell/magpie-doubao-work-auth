@@ -295,3 +295,45 @@ test('推理档位传数字时归一化成名字，不静默丢弃', () => {
   const unknown = prepareRequest({ model: 'm', messages: [{ role: 'user', content: 'hi' }], reasoning_effort: 99 })
   assert.equal(unknown.request.reasoning_effort, undefined)
 })
+
+test('赠送额度用满但 usage_exhausted 仍为 false 时，也要标 aside（issue #20）', () => {
+  // 实测有的账号活动赠送额度已经 1600/1600（已用 100%），
+  // 但服务端返回 usage_exhausted: false。只看标志会让 magpie 拿满格的
+  // 赠送池当总体进度，界面显示「几乎用尽」，而订阅额度其实还剩八成。
+  const summary = {
+    window_limit_section: {
+      usage_exhausted: false,
+      window_limit_groups: [{
+        feature_group_name: '订阅额度',
+        window_limits: [{ used_amount: 293, total_amount: 2142, used_percent: 13 }],
+      }],
+    },
+    incentive_quota_section: {
+      usage_exhausted: false, // 服务端没置 true
+      window_limit_groups: [{
+        feature_group_name: '活动赠送额度',
+        window_limits: [{ used_amount: 1600, total_amount: 1600, used_percent: 100 }],
+      }],
+    },
+  }
+  const quota = normalizeQuota({}, summary, 'u')
+  const gift = quota.windows.find((w) => w.name.includes('活动赠送'))
+  const sub = quota.windows.find((w) => w.name.includes('订阅额度'))
+  assert.equal(gift.aside, true, '用满的赠送池应标 aside，不参与总体判断')
+  assert.equal(sub.aside, false, '还有余量的订阅池不该标 aside')
+})
+
+test('两个池都满时不标 aside（账号确实没额度了）', () => {
+  const summary = {
+    window_limit_section: {
+      usage_exhausted: true,
+      window_limit_groups: [{ feature_group_name: '订阅额度', window_limits: [{ used_amount: 100, total_amount: 100, used_percent: 100 }] }],
+    },
+    incentive_quota_section: {
+      usage_exhausted: true,
+      window_limit_groups: [{ feature_group_name: '活动赠送额度', window_limits: [{ used_amount: 50, total_amount: 50, used_percent: 100 }] }],
+    },
+  }
+  const quota = normalizeQuota({}, summary, 'u')
+  for (const w of quota.windows) assert.equal(w.aside, false, `${w.name} 不该标 aside`)
+})

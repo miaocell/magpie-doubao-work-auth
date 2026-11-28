@@ -148,3 +148,73 @@ test('客户端取消时主动放掉上游迭代器', async () => {
   assert.equal(released, 1, '取消后上游迭代器的 finally 应执行')
   assert.equal(abort.signal.aborted, true, '应同时中止上游请求')
 })
+
+test('开推理档时先到 reasoning 后到工具 JSON，不能把 JSON 当正文（issue #18）', async () => {
+  // 豆包开推理档会先流一大段 reasoning_content，正文（工具 JSON）要等推理结束才来。
+  // 0.4.7 把「只有 reasoning 没有正文」当成可以判定，于是判成 text，
+  // 后面的工具 JSON 就被当正文转发，这一轮调用直接丢了。
+  const prepared = PREPARED
+  const json = '{"content":"先看磁盘","tool_calls":[{"name":"read_file","arguments":{"path":"a"}}]}'
+  const stream = sseResponse(
+    deltas([
+      { reasoning_content: '我需要先查看磁盘容量。' },
+      { reasoning_content: '先看 D 盘根目录。' },
+      { content: json },
+    ]),
+    META,
+    prepared,
+    new AbortController(),
+  )
+  const events = await drain(stream)
+
+  const withCalls = events.find((e) => e?.choices?.[0]?.delta?.tool_calls)
+  assert.ok(withCalls, '应产出 tool_calls，而不是把 JSON 当正文')
+  assert.equal(withCalls.choices[0].delta.tool_calls[0].function.name, 'read_file')
+
+  const contents = events.filter((e) => e?.choices?.[0]?.delta?.content).map((e) => e.choices[0].delta.content).join('')
+  assert.ok(!contents.includes('"tool_calls"'), '正文里不该出现工具 JSON 原文')
+
+  const reasoning = events.filter((e) => e?.choices?.[0]?.delta?.reasoning_content)
+  assert.ok(reasoning.length >= 1, 'reasoning 仍要即时转发')
+})
+
+test('只有 reasoning 的回复按缓冲处理，不误判成正文（工具模式）', async () => {
+  // 正文一直没来时判错的代价不对称：判成 text 会丢工具调用，判成 tool 只是慢。
+  const prepared = PREPARED
+  const stream = sseResponse(
+    deltas([{ reasoning_content: '思考中……' }, { reasoning_content: '还在想' }]),
+    META,
+    prepared,
+    new AbortController(),
+  )
+  const events = await drain(stream)
+  // 没有正文可发，最后应是 stop 收尾，且 rationale 全部即时转发
+  assert.ok(events.filter((e) => e?.choices?.[0]?.delta?.reasoning_content).length >= 1)
+  assert.equal(events.at(-1), '[DONE]')
+})
+
+test('端到端：真实 SSE 格式下，reasoning 先到、工具 JSON 后到，仍要解析成 tool_calls（issue #18）', async () => {
+  // 前一条测的是 sseResponse 对本地产出的 delta 的反应；
+  // 这条走完整链路：豆包 SSE 事件 → readDoubao 解析 → sseResponse 输出。
+  const { readDoubao } = await import('../lib/stream.mjs')
+  const { sseResponse: make } = await import('../lib/chat.mjs')
+
+  const events = [
+    { event: 'SSE_ACK', data: { ack_client_meta: { local_conversation_id: `local_${'a'.repeat(32)}`, conversation_id: '123' } } },
+    // 思考块
+    { event: 'STREAM_MSG_NOTIFY', data: { meta: { message_id: 'm1' }, content: { content_block: [{ block_id: 't1', block_type: 10040, parent_id: '', content: { text_block: { text: '先想一下' } } }] } } },
+    // 正文：工具 JSON
+    { event: 'STREAM_MSG_NOTIFY', data: { meta: { message_id: 'm1' }, content: { content_block: [{ block_id: 'b1', block_type: 10000, parent_id: '', content: { text_block: { text: '{"content":"查磁盘","tool_calls":[{"name":"read_file","arguments":{}}]}' } } }] } } },
+    { event: 'SSE_REPLY_END', data: { end_type: 3 } },
+  ]
+  const body = events.map((e) => `event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`).join('')
+  const upstream = new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })
+  const res = make(readDoubao(upstream, undefined, () => {}), META, PREPARED, new AbortController())
+  const events2 = await drain(res)
+
+  const withCalls = events2.find((e) => e?.choices?.[0]?.delta?.tool_calls)
+  assert.ok(withCalls, '应产出 tool_calls')
+  assert.equal(withCalls.choices[0].delta.tool_calls[0].function.name, 'read_file')
+  assert.ok(events2.some((e) => e?.choices?.[0]?.delta?.reasoning_content), 'reasoning 要即时转发')
+  assert.ok(events2.some((e) => e?.choices?.[0]?.finish_reason === 'tool_calls'))
+})
