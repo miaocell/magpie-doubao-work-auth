@@ -56,8 +56,8 @@ test('errorResponse 保留 type 与 code，登录类额外带响应头', () => {
 })
 
 test('风控验证带 X-Magpie-Refused，让 magpie 不要换账号重试', async () => {
-  // magpie 默认把 403 当作「换个账号可能就好」，会连打多次。
-  // 风控不是换账号能解决的，重试只会把风控状态堆得更高，所以必须标成拒绝。
+  // magpie 的 retryable() 对 4xx 里的一大串状态码（含 403/429）都判成可重试，
+  // 会连打多次。风控不是换账号能解决的，重试只会把风控状态堆得更高，所以必须标成拒绝。
   const error = upstreamError({ error_code: 710022004, error_msg: 'rate limited' })
   assert.equal(error.code, 'captcha_required')
   assert.ok(error.refused, '风控错误应带 refused 标记')
