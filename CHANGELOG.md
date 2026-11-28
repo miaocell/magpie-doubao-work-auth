@@ -2,6 +2,10 @@
 
 只记对使用者有影响的改动，内部重构不写。倒序排列。
 
+## 0.4.12（2026-11-28）
+
+- **图片能力在客户端侧真正生效了。** 0.4.9 打通了上传链路，但 `capabilities.attachment` 还留着 `false`、注释也还写着「没打通」。更要紧的是没意识到 magpie 的判断入口：`host.js` 里是 `image = !!capabilities.input.image`、`imageSaid = typeof capabilities.input.image === "boolean"`，两个都为真才往下游 agent 写 vision / modalities。现在 `attachment` 改成 `true`，加了一条测试钉住这个契约——不然以后谁顺手改回去，用户那边就又没选图入口了。
+
 ## 0.4.11（2026-11-28）
 
 - **风控走 429 时也会被拦住了，不再自动重试 8 次。** 豆包有两条风控出口：`710022004` 走 403、`710012004` 走 429。之前只给 403 那条加了 `X-Magpie-Refused` 和冷却，429 那条被当成普通限流——magpie 按 1s/2s/4s/8s/16s 退避重试到 8 次，每次都真实打到上游，账号越试封得越久。感谢 [@Arlo249](https://github.com/Arlo249) 在 [#22](https://github.com/miaocell/magpie-doubao-work-auth/issues/22) 把路由日志和代码位置都对上了。

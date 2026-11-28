@@ -203,3 +203,27 @@ test('倍率写进 rate 字段，名字保持干净', () => {
   // 豆包按订阅额度扣费，没有每百万 token 的单价可填
   assert.deepEqual(models["glm-5-3"].cost, { input: 0, output: 0, cache: { read: 0, write: 0 } })
 })
+
+test('图片输入标成支持，且是「明确说过」而不是默认', () => {
+  // magpie 的 host.js 里：
+  //   image     = !!capabilities.input.image
+  //   imageSaid = typeof capabilities.input.image === "boolean"
+  // 两者都为真才会往下游 agent 写 vision / modalities。
+  // 之前 input.image 是 false，用户那边连选图入口都没有。
+  const catalog = fallbackModels()
+  const models = magpieModels(catalog)
+  const first = Object.values(models)[0]
+
+  assert.equal(first.capabilities.input.image, true, '图片输入要标 true')
+  assert.equal(
+    typeof first.capabilities.input.image,
+    'boolean',
+    '必须是布尔字面量，缺省会被当成「没说」',
+  )
+  // OpenCode v1 的旧字段，新版已弃用，但留着不碍事
+  assert.equal(first.capabilities.attachment, true)
+  // 其他模态照旧不支持
+  assert.equal(first.capabilities.input.audio, false)
+  assert.equal(first.capabilities.input.video, false)
+  assert.equal(first.capabilities.input.pdf, false)
+})
