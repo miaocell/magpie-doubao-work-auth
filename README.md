@@ -11,15 +11,9 @@
 - **多账号。** 每次登录一个独立账号，凭据各自加密，互不干扰。
 - **不要中间层。** 不需要 Agent2API，不需要浏览器常驻。
 
-## 近期更新
+## 更新记录
 
-> 完整记录见 [CHANGELOG.md](CHANGELOG.md)，最新的在最上面。
-
-- **风控走 429 时不再自动重试 8 次**（`0.4.11`）。豆包有两条风控出口，`710022004` 走 403、`710012004` 走 429，之前只护住了前者。后者被当成普通限流，magpie 会按 1s/2s/4s… 退避重试到 8 次，每次都真实打到上游，账号越试封得越久。现在按 `decision` 字段区分：带 `decision` 是风控，照样带 `X-Magpie-Refused` 并进冷却；不带才是真限流，允许重试。感谢 [@Arlo249](https://github.com/Arlo249) 在 [#22](https://github.com/miaocell/magpie-doubao-work-auth/issues/22) 定位。
-- **模型名不再重复 doubao**（`0.4.10`）。之前显示成 `doubao/doubao-qwen4-max`，现在就是 `doubao/qwen4-max`。已经勾选过的不用重勾，旧 id 会自动兼容。
-- **支持图片输入了**（`0.4.9`）。之前模型标着 `image: false`，因为上传链路没打通。豆包不走内联 base64，要走申请凭据 → 申请地址 → TOS 直传 → 提交四步，签名用的是 **AWS S3 V4**（`x-amz-*` 头），不是火山原生那套。现在通了：发一张 1×1 的 PNG，模型能说出它的尺寸和颜色。改 UI 对照截图、解释图片内容、提取文字这些都能用了。
-- **开推理档时工具调用会丢了**（`0.4.8`）。之前带工具 + 开推理档，豆包先流一大段思考、正文后到，插件把后者当成普通正文透传，这一轮工具调用直接丢失——表现出来就是「首字特别慢、输出不是流式而是瞬间」。感谢 [@fetdog](https://github.com/fetdog) 在 [#18](https://github.com/miaocell/magpie-doubao-work-auth/issues/18) 定位到行。
-- **「从客户端读取」修好了**（`0.4.8`）。真实登录态在 `Default` / `Profile 2` 下（不是 `aha/users/`），按 `Local State` 的 `last_used` 选；客户端开着时文件被独占锁，会直接提示先退出客户端。
+每个版本的完整说明在 [Releases](https://github.com/miaocell/magpie-doubao-work-auth/releases) 页，也可以看 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 拿到的模型
 
