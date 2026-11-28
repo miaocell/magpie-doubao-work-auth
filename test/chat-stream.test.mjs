@@ -218,3 +218,33 @@ test('端到端：真实 SSE 格式下，reasoning 先到、工具 JSON 后到�
   assert.ok(events2.some((e) => e?.choices?.[0]?.delta?.reasoning_content), 'reasoning 要即时转发')
   assert.ok(events2.some((e) => e?.choices?.[0]?.finish_reason === 'tool_calls'))
 })
+
+test('慢请求会打出分段耗时，快请求不会', async () => {
+  // 分段计时的意义：40 秒首字这种反馈，光知道总耗时定位不了任何东西。
+  // 得能看出是卡在上传、建会话，还是等模型吐第一个字。
+  const calls = []
+  const original = console.warn
+  console.warn = (...args) => calls.push(args.join(' '))
+  try {
+    // 快请求：不该有噪音
+    const fast = { started: Date.now(), sessionReady: 10, upstreamFirstDelta: 50, streamEnd: 60 }
+    const { _internal } = await import('../lib/chat.mjs')
+    _internal.logTimeline(fast, { prompt: 'x' }, '完成')
+    assert.equal(calls.filter((c) => c.includes('总耗时')).length, 0, '不到 10 秒不该打日志')
+
+    // 慢请求：要打，且各段都在
+    const slow = {
+      started: Date.now() - 42_000,
+      sessionReady: 800, models: 1100, imagesUploaded: 1600,
+      leaseBegin: 1640, upstreamHeaders: 2100, upstreamFirstDelta: 38_000, streamEnd: 42_000,
+    }
+    _internal.logTimeline(slow, { prompt: 'y'.repeat(1200), images: ['a'] }, '完成')
+    const line = calls.find((c) => c.includes('总耗时'))
+    assert.ok(line, '慢请求要打日志')
+    assert.match(line, /upstreamFirstDelta=38000ms/, '要能看出慢在哪一段')
+    assert.match(line, /图片 1 张/)
+    assert.match(line, /prompt 1200 字符/)
+  } finally {
+    console.warn = original
+  }
+})
