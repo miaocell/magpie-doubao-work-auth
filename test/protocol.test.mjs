@@ -5,7 +5,7 @@ import { normalizeQuota } from '../lib/quota.mjs'
 
 test('普通对话：历史与系统指令编进提示词', () => {
   const prepared = prepareRequest({
-    model: 'doubao-auto',
+    model: 'auto',
     messages: [
       { role: 'system', content: '你是一个严谨的助手。' },
       { role: 'user', content: '你好' },
@@ -13,7 +13,7 @@ test('普通对话：历史与系统指令编进提示词', () => {
       { role: 'user', content: '继续' },
     ],
   })
-  assert.equal(prepared.request.model, 'doubao-auto')
+  assert.equal(prepared.request.model, 'auto')
   assert.equal(prepared.tools, undefined)
   assert.ok(prepared.prompt.includes('你是一个严谨的助手。'))
   assert.ok(prepared.prompt.includes('"role":"user"'))

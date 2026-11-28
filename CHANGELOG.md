@@ -2,6 +2,11 @@
 
 只记对使用者有影响的改动，内部重构不写。倒序排列。
 
+## 0.4.10（2026-11-28）
+
+- **模型 id 去掉多余的 `doubao-` 前缀。** 之前每个模型 id 都带 `doubao-`，magpie 又会在前面拼上 provider 名，界面上就成了 `doubao/doubao-qwen4-max`——`doubao` 重复两次，列表又窄，实际能看到的只有前几个字符，根本分不清哪个是哪个。现在显示成 `doubao/qwen4-max`、`doubao/kimi-k3`，一眼能认出来。
+  已经用旧 id 存过选择的不用重新勾：`selectModel()` 会先按新名字找，找不到再去掉 `doubao-` 前缀试一次。
+
 ## 0.4.9（2026-11-28）
 
 - **支持图片输入了。** 之前 `image` 一直标成 `false`，因为上传链路没打通——现在打通了。豆包不走内联 base64，要走四步（申请凭据 → 申请上传地址 → TOS 直传 → 提交），中间用的是 **AWS S3 V4 签名**，不是火山引擎原生那套：头是 `x-amz-date` / `x-amz-security-token`，`Authorization` 形如 `AWS4-HMAC-SHA256 Credential=<AK>/<date>/cn-north-1/imagex/aws4_request`。之前按火山文档用 `X-Date` + `HMAC-SHA256` + `/request` 一直吃 `InvalidAuthorization`，抓网页真实请求才看出来。

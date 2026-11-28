@@ -14,7 +14,7 @@ import { sseResponse } from '../lib/chat.mjs'
  */
 
 /** 造一个够真实的 prepared：decodeReply 要看 tools / toolChoice */
-const META = { id: "chatcmpl-test", created: 1, model: "doubao-test" }
+const META = { id: "chatcmpl-test", created: 1, model: "test" }
 const PREPARED = {
   tools: [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object', properties: { path: { type: 'string' } } } } }],
   prompt: 'p',

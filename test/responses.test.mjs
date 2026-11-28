@@ -77,11 +77,11 @@ test('chat 结果折回 response 对象，usage 用 input/output_tokens', () => 
   const completion = {
     id: 'chatcmpl-1',
     created: 1700000000,
-    model: 'doubao-glm-5-3',
+    model: 'glm-5-3',
     choices: [{ index: 0, message: { role: 'assistant', content: '你好' }, finish_reason: 'stop' }],
     usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
   }
-  const resp = chatToResponses(completion, 'doubao-glm-5-3')
+  const resp = chatToResponses(completion, 'glm-5-3')
   assert.equal(resp.object, 'response')
   assert.equal(resp.status, 'completed')
   assert.equal(resp.output[0].type, 'message')

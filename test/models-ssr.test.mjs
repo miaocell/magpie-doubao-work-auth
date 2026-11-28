@@ -34,7 +34,7 @@ test('从 SSR 页面解析 office 模型菜单', () => {
   const catalog = parseSsrModels(html(officeMenu([model('person-qwen4-max', 'Qwen 4 Max')])))
 
   assert.ok(catalog)
-  const entry = catalog.get('doubao-qwen4-max')
+  const entry = catalog.get('qwen4-max')
   assert.ok(entry)
   assert.equal(entry.name, 'Qwen 4 Max')
   assert.equal(entry.key, 'person-qwen4-max')
@@ -45,7 +45,7 @@ test('从 SSR 页面解析 office 模型菜单', () => {
 test('字符串里的花括号不会截断 JSON', () => {
   const catalog = parseSsrModels(html(officeMenu([model('person-weird-1', 'Weird {Model} } Name')])))
   assert.ok(catalog)
-  assert.equal(catalog.get('doubao-weird-1').name, 'Weird {Model} } Name')
+  assert.equal(catalog.get('weird-1').name, 'Weird {Model} } Name')
 })
 
 test('跳过 need_upgrade 的条目', () => {
@@ -54,8 +54,8 @@ test('跳过 need_upgrade 的条目', () => {
     model('person-free-1', 'Free Model'),
   ])))
   assert.ok(catalog)
-  assert.equal(catalog.has('doubao-paid-1'), false)
-  assert.ok(catalog.has('doubao-free-1'))
+  assert.equal(catalog.has('paid-1'), false)
+  assert.ok(catalog.has('free-1'))
 })
 
 test('页面里有多处 modeSelectData 时继续找可用的那一处', () => {
@@ -63,7 +63,7 @@ test('页面里有多处 modeSelectData 时继续找可用的那一处', () => {
   const page = `<script>window.a = {"modeSelectData":{"nope":1}};</script><script>window.b = ${good};</script>`
   const catalog = parseSsrModels(page)
   assert.ok(catalog)
-  assert.ok(catalog.has('doubao-qwen4-max'))
+  assert.ok(catalog.has('qwen4-max'))
 })
 
 test('没有 office 模式时返回 null', () => {

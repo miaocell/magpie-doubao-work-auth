@@ -56,13 +56,13 @@ test('解析 office 模式的多模型菜单', () => {
   ]))
   assert.ok(catalog)
   assert.equal(catalog.size, 4, '需升级的应被跳过')
-  assert.ok(catalog.has('doubao-auto'))
-  assert.ok(catalog.has('doubao-deepseek-v4-1-flash'))
-  assert.ok(catalog.has('doubao-kimi-k3-1-pro'))
-  assert.ok(catalog.has('doubao-glm-5-3'))
-  assert.ok(!catalog.has('doubao-pro'), 'need_upgrade 的模型不应出现')
+  assert.ok(catalog.has('auto'))
+  assert.ok(catalog.has('deepseek-v4-1-flash'))
+  assert.ok(catalog.has('kimi-k3-1-pro'))
+  assert.ok(catalog.has('glm-5-3'))
+  assert.ok(!catalog.has('pro'), 'need_upgrade 的模型不应出现')
 
-  const glm = catalog.get('doubao-glm-5-3')
+  const glm = catalog.get('glm-5-3')
   assert.equal(glm.key, 'person-glm-5-3-261111')
   assert.deepEqual(glm.levels, { low: 3, high: 5, max: 7 })
   assert.equal(glm.context, 300000)
@@ -87,7 +87,7 @@ test('只保留含 office 的模型', () => {
     model('person-b', 'B', { modes: ['office'] }),
   ]))
   assert.equal(catalog.size, 1)
-  assert.ok(catalog.has('doubao-b'))
+  assert.ok(catalog.has('b'))
 })
 
 test('基线菜单可用，且与账号截图里的模型一致', () => {
@@ -97,25 +97,25 @@ test('基线菜单可用，且与账号截图里的模型一致', () => {
     assert.ok(names.includes(expected), `基线里应有 ${expected}`)
   }
   assert.ok(!names.includes('豆包 2.1 Pro'), 'need_upgrade 的模型不进基线')
-  const deepseek = catalog.get('doubao-deepseek-v4-1-flash')
+  const deepseek = catalog.get('deepseek-v4-1-flash')
   assert.equal(deepseek.key, 'person-deepseek-v4-1-flash-261017')
   assert.equal(deepseek.extraParams.memory_profile, '300k_230')
 })
 
 test('selectModel 校验模型和推理强度', () => {
   const catalog = fallbackModels()
-  assert.equal(selectModel(catalog, { model: 'doubao-auto' }).effort, 'auto')
-  assert.equal(selectModel(catalog, { model: 'doubao-glm-5-3', reasoning_effort: 'max' }).level, 7)
+  assert.equal(selectModel(catalog, { model: 'auto' }).effort, 'auto')
+  assert.equal(selectModel(catalog, { model: 'glm-5-3', reasoning_effort: 'max' }).level, 7)
   assert.throws(() => selectModel(catalog, { model: 'nope' }), (e) => e.status === 404)
   assert.throws(
-    () => selectModel(catalog, { model: 'doubao-glm-5-3', reasoning_effort: 'xhigh' }),
+    () => selectModel(catalog, { model: 'glm-5-3', reasoning_effort: 'xhigh' }),
     (e) => e.status === 400,
   )
 })
 
 test('magpieModels 输出符合 magpie 的 Model 形状', () => {
   const models = magpieModels(fallbackModels())
-  const m = models['doubao-kimi-k3']
+  const m = models['kimi-k3']
   assert.equal(m.providerID, 'doubao')
   assert.equal(m.api.npm, '@ai-sdk/openai-compatible')
   assert.equal(m.capabilities.toolcall, true)
@@ -172,34 +172,34 @@ test('没有标签或标签无倍率时留空', () => {
 test('基线模型的倍率与截图一致', () => {
   const catalog = fallbackModels()
   const expected = {
-    'doubao-kimi-k3-1-pro-highspeed': 1.44,
-    'doubao-kimi-k3': 1.48,
-    'doubao-glm-5-3': 0.8,
-    'doubao-glm-5-3-flash': 0.08,
-    'doubao-deepseek-v4-pro-ga': 0.46,
-    'doubao-kimi-k3-1-pro': 0.95,
-    'doubao-deepseek-v4-1-flash': 0.01,
+    'kimi-k3-1-pro-highspeed': 1.44,
+    'kimi-k3': 1.48,
+    'glm-5-3': 0.8,
+    'glm-5-3-flash': 0.08,
+    'deepseek-v4-pro-ga': 0.46,
+    'kimi-k3-1-pro': 0.95,
+    'deepseek-v4-1-flash': 0.01,
   }
   for (const [id, rate] of Object.entries(expected)) {
     assert.equal(catalog.get(id).rate, rate, `${id} 的倍率应是 ${rate}`)
   }
-  assert.equal(catalog.get('doubao-auto').free, true, '自动应标为免费')
+  assert.equal(catalog.get('auto').free, true, '自动应标为免费')
 })
 
 test('倍率写进 rate 字段，名字保持干净', () => {
   const models = magpieModels(fallbackModels())
   // 名字只放模型本名，界面用 rate 渲染成徽章，不再把倍率拼进字符串
-  assert.equal(models['doubao-glm-5-3'].name, 'GLM 5.3')
-  assert.equal(models['doubao-auto'].name, '自动')
+  assert.equal(models['glm-5-3'].name, 'GLM 5.3')
+  assert.equal(models['auto'].name, '自动')
   // magpie 的自定义字段：一次请求消耗的倍数
-  assert.equal(models['doubao-glm-5-3'].rate, 0.8)
-  assert.equal(models['doubao-deepseek-v4-1-flash'].rate, 0.01)
-  assert.equal(models['doubao-kimi-k3'].rate, 1.48)
+  assert.equal(models['glm-5-3'].rate, 0.8)
+  assert.equal(models['deepseek-v4-1-flash'].rate, 0.01)
+  assert.equal(models['kimi-k3'].rate, 1.48)
   // 免费档用 0 表示不计费
-  assert.equal(models['doubao-auto'].rate, 0)
+  assert.equal(models['auto'].rate, 0)
   // 上下文用真实值，界面自己渲染成 256K / 300K
-  assert.equal(models['doubao-glm-5-3'].limit.context, 300000)
-  assert.equal(models['doubao-auto'].limit.context, 256000)
+  assert.equal(models['glm-5-3'].limit.context, 300000)
+  assert.equal(models['auto'].limit.context, 256000)
   // 豆包按订阅额度扣费，没有每百万 token 的单价可填
-  assert.deepEqual(models["doubao-glm-5-3"].cost, { input: 0, output: 0, cache: { read: 0, write: 0 } })
+  assert.deepEqual(models["glm-5-3"].cost, { input: 0, output: 0, cache: { read: 0, write: 0 } })
 })

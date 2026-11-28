@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 // 保管库走环境变量指定的目录，避免碰到真实数据
-const dir = await mkdtemp(join(tmpdir(), 'doubao-vault-test-'))
+const dir = await mkdtemp(join(tmpdir(), 'vault-test-'))
 process.env.DOUBAO_WORK_VAULT = dir
 const { saveAccount, loadAccount, listAccounts, removeAccount } = await import('../lib/vault.mjs')
 
